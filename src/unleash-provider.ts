@@ -37,7 +37,10 @@ export class UnleashProvider implements Provider {
     this.config = config;
   }
 
-  /** Escape hatch to the underlying Unleash client; defined after `initialize()`. */
+  set unleashClient(client:  Unleash) {
+    this.client = client;
+  }
+
   get unleashClient(): Unleash | undefined {
     return this.client;
   }
@@ -46,13 +49,14 @@ export class UnleashProvider implements Provider {
     if (this.client) {
       return;
     }
-    const client = new Unleash({ ...this.config, disableAutoStart: true });
-    this.client = client;
+    if (!this.client) {
+        this.client = new Unleash({ ...this.config!, disableAutoStart: true });
+    }
 
-    client.on(UnleashEvents.Error, (error: unknown) => this.onUnleashError(error));
-    client.on(UnleashEvents.Synchronized, () => this.onUnleashSuccess());
-    client.on(UnleashEvents.Unchanged, () => this.onUnleashSuccess());
-    client.on(UnleashEvents.Changed, () => {
+    this.client?.on(UnleashEvents.Error, (error: unknown) => this.onUnleashError(error));
+    this.client?.on(UnleashEvents.Synchronized, () => this.onUnleashSuccess());
+    this.client?.on(UnleashEvents.Unchanged, () => this.onUnleashSuccess());
+    this.client?.on(UnleashEvents.Changed, () => {
       this.onUnleashSuccess();
       this.events.emit(ProviderEvents.ConfigurationChanged, { message: 'Flag configuration changed' });
     });
@@ -65,14 +69,14 @@ export class UnleashProvider implements Provider {
     // recovers the provider.
     const abort = new AbortController();
     const started = Promise.all([
-      once(client, UnleashEvents.Ready, { signal: abort.signal }),
-      once(client, UnleashEvents.Synchronized, { signal: abort.signal }),
+      once(this.client, UnleashEvents.Ready, { signal: abort.signal }),
+      once(this.client, UnleashEvents.Synchronized, { signal: abort.signal }),
     ]);
-    const failed = once(client, UnleashEvents.Error, { signal: abort.signal }).then(([error]) =>
+    const failed = once(this.client, UnleashEvents.Error, { signal: abort.signal }).then(([error]) =>
       Promise.reject(toError(error)),
     );
     try {
-      await client.start();
+      await this.client.start();
       await Promise.race([started, failed]);
     } finally {
       abort.abort();
